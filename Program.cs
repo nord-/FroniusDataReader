@@ -33,8 +33,8 @@ namespace FroniusDataReader
 
             Console.WriteLine($"Start: {fromDate:d}, end: {toDate:d}");
 
-            var path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            var outputFile = Path.Combine(path, Path.GetRandomFileName().Substring(0, 9) + "txt");
+            var path = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var outputFile = Path.Combine(path, $"fdr{fromDate:yyyyMMdd}.txt"); //Path.GetRandomFileName().Substring(0, 9) + "txt");
             using var textWriter = File.CreateText(outputFile);
             using var client = new HttpClient();
             for (var iterationStart = fromDate; iterationStart < toDate; iterationStart = iterationStart.AddDays(MaxDays+1))
