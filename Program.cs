@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
+using System.Configuration;
 using System.Linq;
 using System.Net.Http;
-using System.Reflection;
-using System.Text.Json;
 using System.Threading.Tasks;
+using Flurl;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -14,9 +12,7 @@ namespace FroniusDataReader
 {
     class Program
     {
-        private const string ApiUrl = @"http://192.168.1.189/solar_api/v1/GetArchiveData.cgi?Scope=System&StartDate=%startdate%&EndDate=%enddate%&Channel=EnergyReal_WAC_Sum_Produced&SeriesType=DailySum";
-        private const string StartDate = "%startdate%";
-        private const string EndDate = "%enddate%";
+        // http://192.168.1.189/solar_api/v1/GetArchiveData.cgi?Scope=System&StartDate=%startdate%&EndDate=%enddate%&Channel=EnergyReal_WAC_Sum_Produced&SeriesType=DailySum
         private const int MaxDays = 15;
 
         static void Main(string[] args)
@@ -33,17 +29,26 @@ namespace FroniusDataReader
 
             Console.WriteLine($"Start: {fromDate:d}, end: {toDate:d}");
 
-            var path = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            var outputFile = Path.Combine(path, $"fdr{fromDate:yyyyMMdd}.txt"); //Path.GetRandomFileName().Substring(0, 9) + "txt");
-            using var textWriter = File.CreateText(outputFile);
+            var allDays = new Dictionary<DateTime, decimal>();
             using var client = new HttpClient();
+
+            var taskList = new List<Task>();
+
             for (var iterationStart = fromDate; iterationStart < toDate; iterationStart = iterationStart.AddDays(MaxDays+1))
             {
                 var endDate = iterationStart.AddDays(MaxDays);
                 endDate = endDate > toDate ? toDate : endDate;
 
-                var localUrl = ApiUrl.Replace(StartDate, iterationStart.ToString("dd.MM.yyyy"))
-                                     .Replace(EndDate, endDate.ToString("dd.MM.yyyy"));
+                var localUrl = $"http://{InverterIp}"
+                               .AppendPathSegment("solar_api/v1/GetArchiveData.cgi")
+                               .SetQueryParam("Scope", "System")
+                               .SetQueryParam("Channel", "EnergyReal_WAC_Sum_Produced")
+                               .SetQueryParam("SeriesType", "DailySum")
+                               .SetQueryParam("StartDate", iterationStart.ToString("dd.MM.yyyy"))
+                               .SetQueryParam("EndDate", endDate.ToString("dd.MM.yyyy"));
+
+                Console.WriteLine(localUrl + "\n");
+
                 var start = iterationStart;
                 var task = Task.Run(async () =>
                                     {
@@ -58,23 +63,27 @@ namespace FroniusDataReader
 
                                             foreach (var (secs, value) in daysWithData)
                                             {
-                                                Console.WriteLine($"{start.AddSeconds(secs):d} {value:F0}");
-                                                await textWriter.WriteLineAsync($"{start.AddSeconds(secs):d}\t{value:F0}");
+                                                var d = new { Time = start.AddSeconds(secs), Value = value};
+                                                allDays.Add(d.Time, d.Value);
+                                                Console.WriteLine($"{d.Time:d} {d.Value:F0}");
                                             }
                                         }
                                         catch
                                         {
                                             Console.WriteLine();
-                                            Console.WriteLine(json.ToString(Formatting.Indented));
+                                            Console.WriteLine(json != null ? json.ToString(Formatting.Indented) : "No valid json in response...");
                                             Console.WriteLine();
                                         }
                                     });
-
-                Task.WaitAll(task);
+                taskList.Add(task);
             }
 
-            textWriter.Close();
-            Console.WriteLine(outputFile);
+            Task.WaitAll(taskList.ToArray());
+
+            var daysAsText = allDays.DictionaryToText();
+            Clipboard.SetText(daysAsText);
         }
+
+        private static string InverterIp => ConfigurationManager.AppSettings.Get(nameof(InverterIp));
     }
 }
