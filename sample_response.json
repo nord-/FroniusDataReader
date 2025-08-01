@@ -1,0 +1,54 @@
+{
+	"Body" : 
+	{
+		"Data" : 
+		{
+			"inverter/1" : 
+			{
+				"Data" : 
+				{
+					"EnergyReal_WAC_Sum_Produced" : 
+					{
+						"Unit" : "Wh",
+						"Values" : 
+						{
+							"0" : 64787.665555555555,
+							"86400" : 26981.127500000013
+						},
+						"_comment" : "channelId=67830024"
+					}
+				},
+				"DeviceType" : 123,
+				"End" : "2025-07-02T23:59:59+02:00",
+				"NodeType" : 97,
+				"Start" : "2025-07-01T00:00:00+02:00"
+			}
+		}
+	},
+	"Head" : 
+	{
+		"RequestArguments" : 
+		{
+			"Channel" : 
+			[
+				"EnergyReal_WAC_Sum_Produced"
+			],
+			"EndDate" : "2025-07-02T23:59:59+02:00",
+			"HumanReadable" : "True",
+			"Scope" : "System",
+			"SeriesType" : "DailySum",
+			"StartDate" : "2025-07-01T00:00:00+02:00"
+		},
+		"Status" : 
+		{
+			"Code" : 0,
+			"ErrorDetail" : 
+			{
+				"Nodes" : []
+			},
+			"Reason" : "",
+			"UserMessage" : ""
+		},
+		"Timestamp" : "2025-08-01T15:28:37+02:00"
+	}
+}

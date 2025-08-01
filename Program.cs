@@ -1,89 +1,111 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Linq;
-using System.Net.Http;
-using System.Threading.Tasks;
+﻿using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Flurl;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
-namespace FroniusDataReader
+namespace FroniusDataReader;
+
+internal class Program
 {
-    class Program
+    static async Task Main(string[] args)
     {
-        // http://192.168.1.189/solar_api/v1/GetArchiveData.cgi?Scope=System&StartDate=%startdate%&EndDate=%enddate%&Channel=EnergyReal_WAC_Sum_Produced&SeriesType=DailySum
-        private const int MaxDays = 15;
+        // Build configuration
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .Build();
 
-        static void Main(string[] args)
+        var settings = configuration.GetSection("FroniusSettings").Get<FroniusSettings>()
+            ?? throw new InvalidOperationException("FroniusSettings configuration is missing");
+
+        var prevMonth = DateTime.Today.AddMonths(-1);
+        var fromDate = new DateTime(prevMonth.Year, prevMonth.Month, 1);
+        var toDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddDays(-1);
+
+        if (args.Length > 0)
         {
-            var prevMonth = DateTime.Today.AddMonths(-1);
-            var fromDate = new DateTime(prevMonth.Year, prevMonth.Month, 1);
-            var toDate   = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddDays(-1);
-
-            if (args.Length > 0)
-            {
-                fromDate = DateTime.Parse(args[0]);
-                toDate = DateTime.Parse(args[1]);
-            }
-
-            Console.WriteLine($"Start: {fromDate:d}, end: {toDate:d}");
-
-            var allDays = new Dictionary<DateTime, decimal>();
-            using var client = new HttpClient();
-
-            var taskList = new List<Task>();
-
-            for (var iterationStart = fromDate; iterationStart < toDate; iterationStart = iterationStart.AddDays(MaxDays+1))
-            {
-                var endDate = iterationStart.AddDays(MaxDays);
-                endDate = endDate > toDate ? toDate : endDate;
-
-                var localUrl = $"http://{InverterIp}"
-                               .AppendPathSegment("solar_api/v1/GetArchiveData.cgi")
-                               .SetQueryParam("Scope", "System")
-                               .SetQueryParam("Channel", "EnergyReal_WAC_Sum_Produced")
-                               .SetQueryParam("SeriesType", "DailySum")
-                               .SetQueryParam("StartDate", iterationStart.ToString("dd.MM.yyyy"))
-                               .SetQueryParam("EndDate", endDate.ToString("dd.MM.yyyy"));
-
-                Console.WriteLine(localUrl + "\n");
-
-                var start = iterationStart;
-                var task = Task.Run(async () =>
-                                    {
-                                        JObject json = null;
-                                        try
-                                        {
-                                            var response = await client.GetStringAsync(localUrl);
-                                            json = JObject.Parse(response);
-                                            var daysWithData = json["Body"]["Data"]["inverter/1"]["Data"]["EnergyReal_WAC_Sum_Produced"]["Values"]
-                                                              .Children()
-                                                              .ToDictionary(key => long.Parse(((JProperty)key).Name), value => (decimal)((JProperty)value).Value);
-
-                                            foreach (var (secs, value) in daysWithData)
-                                            {
-                                                var d = new { Time = start.AddSeconds(secs), Value = value};
-                                                allDays.Add(d.Time, d.Value);
-                                                Console.WriteLine($"{d.Time:d} {d.Value:F0}");
-                                            }
-                                        }
-                                        catch
-                                        {
-                                            Console.WriteLine();
-                                            Console.WriteLine(json != null ? json.ToString(Formatting.Indented) : "No valid json in response...");
-                                            Console.WriteLine();
-                                        }
-                                    });
-                taskList.Add(task);
-            }
-
-            Task.WaitAll(taskList.ToArray());
-
-            var daysAsText = allDays.DictionaryToText();
-            Clipboard.SetText(daysAsText);
+            fromDate = DateTime.Parse(args[0]);
+            toDate = DateTime.Parse(args[1]);
         }
 
-        private static string InverterIp => ConfigurationManager.AppSettings.Get(nameof(InverterIp));
+        Console.WriteLine($"Start: {fromDate:d}, end: {toDate:d}");
+
+        var allDays = new Dictionary<DateTime, decimal>();
+        using var client = new HttpClient();
+
+        var tasks = new List<Task>();
+
+        for (var iterationStart = fromDate; iterationStart < toDate; iterationStart = iterationStart.AddDays(settings.MaxDays + 1))
+        {
+            var endDate = iterationStart.AddDays(settings.MaxDays);
+            endDate = endDate > toDate ? toDate : endDate;
+
+            var localUrl = $"http://{settings.InverterIp}"
+                           .AppendPathSegment("solar_api/v1/GetArchiveData.cgi")
+                           .SetQueryParam("Scope", "System")
+                           .SetQueryParam("Channel", "EnergyReal_WAC_Sum_Produced")
+                           .SetQueryParam("SeriesType", "DailySum")
+                           .SetQueryParam("StartDate", iterationStart.ToString("dd.MM.yyyy"))
+                           .SetQueryParam("EndDate", endDate.ToString("dd.MM.yyyy"));
+
+            Console.WriteLine($"{localUrl}\n");
+
+            var start = iterationStart;
+            var task = ProcessDataAsync(client, localUrl, start, allDays);
+            tasks.Add(task);
+        }
+
+        await Task.WhenAll(tasks);
+
+        var daysAsText = allDays.DictionaryToText();
+        await Clipboard.SetTextAsync(daysAsText);
+    }
+
+    private static async Task ProcessDataAsync(HttpClient client, string url, DateTime start, Dictionary<DateTime, decimal> allDays)
+    {
+        JsonDocument? json = null;
+        try
+        {
+            var response = await client.GetStringAsync(url);
+            json = JsonDocument.Parse(response);
+            
+            var valuesElement = json.RootElement
+                .GetProperty("Body")
+                .GetProperty("Data")
+                .GetProperty("inverter/1")
+                .GetProperty("Data")
+                .GetProperty("EnergyReal_WAC_Sum_Produced")
+                .GetProperty("Values");
+
+            foreach (var property in valuesElement.EnumerateObject())
+            {
+                if (long.TryParse(property.Name, out var secs) && property.Value.TryGetDecimal(out var value))
+                {
+                    var time = start.AddSeconds(secs);
+                    lock (allDays)
+                    {
+                        allDays.TryAdd(time, value);
+                    }
+                    Console.WriteLine($"{time:d} {value:F0}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine();
+            if (json != null)
+            {
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                Console.WriteLine(JsonSerializer.Serialize(json, options));
+            }
+            else
+            {
+                Console.WriteLine($"Error processing response: {ex.Message}");
+            }
+            Console.WriteLine();
+        }
+        finally
+        {
+            json?.Dispose();
+        }
     }
 }
