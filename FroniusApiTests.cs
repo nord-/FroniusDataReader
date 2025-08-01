@@ -25,8 +25,8 @@ public class FroniusApiTests : IDisposable
             .SetQueryParam("Scope", "System")
             .SetQueryParam("Channel", "EnergyReal_WAC_Sum_Produced")
             .SetQueryParam("SeriesType", "DailySum")
-            .SetQueryParam("StartDate", "01.07.2025")
-            .SetQueryParam("EndDate", "16.07.2025");
+            .SetQueryParam("StartDate", "2025-07-01")
+            .SetQueryParam("EndDate", "2025-07-16");
 
         // Act
         var response = await _httpClient.GetAsync(url);
@@ -170,11 +170,11 @@ public class FroniusApiTests : IDisposable
             .SetQueryParam("Scope", "System")
             .SetQueryParam("Channel", "EnergyReal_WAC_Sum_Produced")
             .SetQueryParam("SeriesType", "DailySum")
-            .SetQueryParam("StartDate", "01.07.2025")
-            .SetQueryParam("EndDate", "16.07.2025");
+            .SetQueryParam("StartDate", "2025-07-01")
+            .SetQueryParam("EndDate", "2025-07-16");
 
         // Assert
-        var expectedUrl = "http://192.168.2.31/solar_api/v1/GetArchiveData.cgi?Scope=System&Channel=EnergyReal_WAC_Sum_Produced&SeriesType=DailySum&StartDate=01.07.2025&EndDate=16.07.2025";
+        var expectedUrl = "http://192.168.2.31/solar_api/v1/GetArchiveData.cgi?Scope=System&Channel=EnergyReal_WAC_Sum_Produced&SeriesType=DailySum&StartDate=2025-07-01&EndDate=2025-07-16";
         url.ToString().Should().Be(expectedUrl, "URL should be constructed correctly");
     }
 
