@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-C# .NET 9.0 console application that fetches daily solar energy production data from a Fronius inverter on the local network and copies it to the clipboard as tab-separated values.
+C# .NET 10.0 console application that fetches daily solar energy production data from a Fronius inverter on the local network and copies it to the clipboard as tab-separated values.
 
 ## Build and Test Commands
 
